@@ -1,5 +1,17 @@
 from rest_framework import serializers
-from product.models import Product,ImageUUID,PrimaryCategory,SecondaryCategory
+from product.models import Product,ImageUUID,PrimaryCategory,SecondaryCategory,MyUser
+from django.contrib.auth import get_user_model
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = get_user_model()
+        fields = ('id','email','password')
+        extra_kwargs = {'password': {'write_only': True}}
+
+    def create(self, validated_data):
+        user = get_user_model().objects.create_user(email=validated_data['email'],password=validated_data['password'])
+
+        return user
 
 class ImageUUIDSerializer(serializers.ModelSerializer):
     class Meta:
@@ -27,7 +39,8 @@ class ProductSerializer(serializers.ModelSerializer):
         instance.price = validated_data.get('price',instance.price)
         instance.location = validated_data.get('location',instance.location)
         instance.amount = validated_data.get('amount',instance.amount)
-        instance.gps = validated_data.get('gps',instance.gps)
+        instance.longitude = validated_data.get('longitude',instance.longitude)
+        instance.latitude = validated_data.get('latitude',instance.latitude)
         instance.originalPrice = validated_data.get('originalPrice',instance.originalPrice)
         instance.brandNew = validated_data.get('brandNew',instance.brandNew)
         instance.bargain = validated_data.get('bargain',instance.bargain)

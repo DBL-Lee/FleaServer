@@ -1,10 +1,11 @@
-from rest_framework import status,filters, mixins,generics,pagination
+from rest_framework import status,filters, mixins,generics,pagination,permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from product.models import Product,PrimaryCategory,Version
-from product.serializers import ProductSerializer,PriCatSerializer
+from product.serializers import ProductSerializer,PriCatSerializer,UserSerializer
 from django.http import HttpResponse
 import django_filters
+from django.contrib.auth import get_user_model
 
 def upVersion():
     version = Version.objects.get(pk=1)
@@ -46,20 +47,30 @@ class ProductList(generics.ListCreateAPIView):
 
     def get_queryset(self):  
         sortType = self.request.query_params.get('sorttype',None)
-        if sortType is not None:
-            if sortType=="distance":
-                latitude = self.request.query_params.get('latitude',None)
-                longitude = self.request.query_params.get('longitude',None)
-                queryset = Product.objects.nearby(float(latitude),float(longitude),50000)
-            elif sortType=="":
-                queryset = Product.objects.all()
-            else:
-                queryset = Product.objects.all()
-        else:
-            queryset = Product.objects.all()
+        queryset = Product.objects.all()
         titleq = self.request.query_params.get('title',None)
         if titleq is not None:
             queryset = queryset.filter(title__icontains=titleq)
+        
+        latitude = self.request.query_params.get('latitude',None)
+        longitude = self.request.query_params.get('longitude',None)
+        distance = self.request.query_params.get('distance',1000)
+        queryset = queryset.nearby(float(latitude),float(longitude),float(distance))
+        if sortType is not None:
+            if sortType=="distance":
+                #do nothing already sorted by distance
+                print "distance"
+            elif sortType=="price":
+                queryset = queryset.orderByPriceAscending()
+            elif sortType=="-price":
+                queryset = queryset.orderByPriceDescending()
+            elif sortType=="posttime":
+                queryset = queryset.orderByPostTime()
+            elif sortType=="default":
+                queryset = queryset
+            else:
+                queryset = Product.objects.all()
+
         return queryset
 
 class ProductDetail(generics.RetrieveUpdateDestroyAPIView):
@@ -74,3 +85,10 @@ class CategoryList(VersionedListCreateAPIView):
 class CategoryDetail(VersionedRetrieveUpdateDestroyAPIView): 
     queryset = PrimaryCategory.objects.all()
     serializer_class = PriCatSerializer
+
+class UserRegister(generics.CreateAPIView):
+    model = get_user_model()
+    permission_classes = [
+        permissions.AllowAny
+    ]
+    serializer_class = UserSerializer

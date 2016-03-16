@@ -1,5 +1,10 @@
 from __future__ import unicode_literals
+from django.utils import timezone
 from django.db import models
+from django.utils.http import urlquote
+from django.utils.translation import ugettext_lazy as _
+from django.core.mail import send_mail
+from django.contrib.auth.models import AbstractBaseUser,BaseUserManager
 
 class ProductQuerySet(models.query.QuerySet):
     def nearby(self,latitude,longitude,distance):
@@ -13,13 +18,31 @@ class ProductQuerySet(models.query.QuerySet):
                     order_by=['distance']
                     )
 
+    def orderByPriceAscending(self):
+        return self.order_by('price')
+
+    def orderByPriceDescending(self):
+        return self.order_by('-price')
+
+    def orderByPostTime(self):
+        return self.order_by('-postedTime')
+
 class ProductManager(models.Manager):
     def get_queryset(self):
         return ProductQuerySet(model=self.model, using=self._db)
 
     def nearby(self, latitude, longitude, distance):
         return self.get_queryset().nearby(latitude,longitude,distance)
+
+    def orderByPriceAscending(self):
+        return self.get_queryset().orderByPriceAscending()
+
+    def orderByPriceDescending(self):
+        return self.get_queryset().orderByPriceDescending()
     
+    def orderByPostTime(self):
+        return self.get_queryset().orderByPostTime()
+
 class Product(models.Model):
     title = models.CharField(max_length=20, blank=True, default='')
     mainimage = models.IntegerField()
@@ -40,15 +63,6 @@ class Product(models.Model):
 
     objects = ProductManager()
 
-    def distanceFrom(self,currentGPS):
-        lat1, lon1, lat2, lon2 = map(radians, map(float, self.gps.split()+currentGPS.split()))
-        dlon = lon2-lon1
-        dlat = lat2-lat1
-        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-        c = 2*asin(sqrt(a))
-        km = 6367*c
-        return km
-
 class ImageUUID(models.Model):
 	product = models.ForeignKey('Product',on_delete=models.CASCADE,related_name='images')
 	uuid = models.CharField(max_length=40)
@@ -64,3 +78,57 @@ class PrimaryCategory(models.Model):
 class SecondaryCategory(models.Model):
     title = models.CharField(max_length=10)
     primaryCategory = models.ForeignKey(PrimaryCategory, related_name='secondary')
+
+class MyUserManager(BaseUserManager):
+    def create_user(self,email,password,**extra_fields):
+        now = timezone.now()
+        if not email:
+            raise ValueError('Email must be set')
+        email = self.normalize_email(email)
+        user = self.model(email=email,date_joined=now,last_login=now,**extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self,email,password,**extra_fields):
+        user = self.create_user(email,password=password,**extra_fields)
+        user.is_admin = True
+        user.save(using=self._db)
+        return user
+
+class MyUser(AbstractBaseUser):
+    email = models.EmailField(max_length=254,unique=True)
+    is_active = models.BooleanField(default=True)
+    is_admin = models.BooleanField(default=False)
+    date_joined = models.DateTimeField(default=timezone.now)
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+    
+    objects = MyUserManager()
+    
+    class Meta:
+        verbose_name = _('user')
+        verbose_name_plural = _('users')
+
+    def get_full_name(self):
+        return self.email
+
+    def get_short_name(self):
+        return self.email
+
+    def __str__(self):
+        return self.email
+
+    def has_perm(self, perm, obj=None):
+        return True
+
+    def has_module_perms(self,app_label):
+        return True
+
+    @property
+    def is_staff(self):
+        return self.is_admin
+
+    def email_user(self,subject,message,from_email=None):
+        send_mail(subject,message,from_email,[self.email])

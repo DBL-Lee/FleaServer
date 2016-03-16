@@ -60,6 +60,8 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 5
 }
 
+AUTH_USER_MODEL = 'product.MyUser'
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',

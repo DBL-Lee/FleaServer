@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
-        fields = ('id','email','password')
+        fields = ('id','email','password','avatar')
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
@@ -23,11 +23,13 @@ class ProductSerializer(serializers.ModelSerializer):
     images = ImageUUIDSerializer(many=True) 
     category = serializers.PrimaryKeyRelatedField(queryset=SecondaryCategory.objects.all())
     usernickname = serializers.ReadOnlyField(source='user.nickname')
+    useravatar = serializers.ReadOnlyField(source='user.avatar')
+    userid = serializers.ReadOnlyField(source='user.pk')
 
 
     class Meta:
         model = Product
-        fields = ('id','usernickname','title','mainimage','city','country','images','category','price','location','latitude','longitude','amount','postedTime','originalPrice','brandNew','bargain','exchange','description')
+        fields = ('id','usernickname','useravatar','userid','title','mainimage','city','country','images','category','price','location','latitude','longitude','amount','postedTime','originalPrice','brandNew','bargain','exchange','description')
         
     def create(self, validated_data):
         user = self.context['request'].user

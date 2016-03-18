@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from rest_framework import status,filters, mixins,generics,pagination,permissions
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticatedOrReadOnly,IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from product.models import Product,PrimaryCategory,Version,EmailCode,MyUser
@@ -16,6 +16,59 @@ import random
 from post_office import mail
 from django.core.mail import send_mail
 from product.tasks import sendEmail,deleteRow
+from collections import OrderedDict
+
+class SelfPostedProduct(generics.ListAPIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    serializer_class = ProductSerializer
+
+    def get_queryset(self):
+        queryset = Product.objects.all()
+        queryset = queryset.filter(user=self.request.user)
+        queryset = queryset.order_by('-postedTime')
+        return queryset
+
+
+class SelfSoldProduct(APIView):
+
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    serializer_class = ProductSerializer
+
+    def get_queryset(self):
+        queryset = Product.objects.all()
+        queryset = queryset.filter(user=self.request.user).filter(buyer__isnull=False)
+        queryset = queryset.order_by('-postedTime')
+        return queryset
+
+    
+class SelfBoughtProduct(APIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    serializer_class = ProductSerializer
+
+    def get_queryset(self):
+        queryset = Product.objects.all()
+        queryset = queryset.filter(buyer=self.request.user)
+        queryset = queryset.order_by('-postedTime')
+        return queryset
+
+class SelfInfo(APIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    def get(self,request,*args,**kwargs):
+        user = request.user
+        ret = OrderedDict()
+        ret['nickname'] = user.nickname
+        ret['avatar'] = user.avatar
+        ret['posted'] = user.postedProductCount()
+        ret['bought'] = user.boughtProductCount()
+        ret['sold'] = user.soldProductCount()
+        return Response(ret,status=200)
+
+
+
 def verifycodegenerator(size=5,chars=string.ascii_uppercase+string.digits):
     return ''.join(random.choice(chars) for _ in range(size))
 

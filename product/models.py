@@ -66,6 +66,7 @@ class Product(models.Model):
     description = models.TextField(blank=True, default='')
     
     user = models.ForeignKey(settings.AUTH_USER_MODEL,related_name='products',on_delete=models.CASCADE)
+    buyer = models.ForeignKey(settings.AUTH_USER_MODEL,related_name='boughtProducts',on_delete=models.SET_NULL,null=True)
 
     objects = ProductManager()
 
@@ -108,6 +109,7 @@ class MyUser(AbstractBaseUser):
     is_admin = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
     nickname = models.CharField(max_length=254,unique=True)
+    avatar = models.CharField(max_length=50,default="defaultavatar.png")
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['nickname',]
@@ -117,6 +119,15 @@ class MyUser(AbstractBaseUser):
     class Meta:
         verbose_name = _('user')
         verbose_name_plural = _('users')
+
+    def postedProductCount(self):
+        return self.products.count()
+
+    def boughtProductCount(self):
+        return self.boughtProducts.count()
+
+    def soldProductCount(self):
+        return self.products.filter(buyer__isnull=False).count()
 
     def get_full_name(self):
         return self.email

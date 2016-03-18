@@ -10,6 +10,10 @@ urlpatterns = [
     url(r'^products/primarycategory/version/$',views.currentVersion),
     url(r'^user/register/$',views.UserRegister.as_view()),
     url(r'^user/email/$',views.EmailUser.as_view()),
+    url(r'^user/self/overview/$',views.SelfInfo.as_view()),
+    url(r'^user/self/posted/$',views.SelfPostedProduct.as_view()),
+    url(r'^user/self/sold/$',views.SelfSoldProduct.as_view()),
+    url(r'^user/self/bought/$',views.SelfBoughtProduct.as_view()),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)

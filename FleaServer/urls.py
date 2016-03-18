@@ -15,8 +15,10 @@ Including another URLconf
 """
 from django.conf.urls import url, include
 from django.contrib import admin
-
+from rest_framework_jwt import views as jwt_view
 urlpatterns = [
 	url(r'^', include('product.urls')),
     url(r'^admin/', admin.site.urls),
+    url(r'^api-token-auth/',jwt_view.obtain_jwt_token),
+    url(r'^api-token-refresh/',jwt_view.refresh_jwt_token),
 ]

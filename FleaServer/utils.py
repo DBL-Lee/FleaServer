@@ -3,7 +3,6 @@ import math
 from django.db.backends.signals import connection_created
 from django.dispatch import receiver
 
-
 @receiver(connection_created)
 def extend_sqlite(connection=None, **kwargs):
     if connection.vendor == "sqlite":
@@ -13,3 +12,4 @@ def extend_sqlite(connection=None, **kwargs):
         cf('cos', 1, math.cos)
         cf('radians', 1, math.radians)
         cf('sin', 1, math.sin)
+        

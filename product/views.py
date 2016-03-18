@@ -1,11 +1,36 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 from rest_framework import status,filters, mixins,generics,pagination,permissions
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from product.models import Product,PrimaryCategory,Version
+from product.models import Product,PrimaryCategory,Version,EmailCode,MyUser
 from product.serializers import ProductSerializer,PriCatSerializer,UserSerializer
 from django.http import HttpResponse
 import django_filters
 from django.contrib.auth import get_user_model
+
+from rest_framework_jwt.authentication import JSONWebTokenAuthentication
+import string
+import random
+from post_office import mail
+from django.core.mail import send_mail
+from product.tasks import sendEmail,deleteRow
+def verifycodegenerator(size=5,chars=string.ascii_uppercase+string.digits):
+    return ''.join(random.choice(chars) for _ in range(size))
+
+class EmailUser(APIView):
+    def post(self,request, *args, **kwargs):
+        email = request.data.get("email",None)
+        if email is not None:
+            code = verifycodegenerator()
+            store = EmailCode.objects.create(code=code)
+            mail.send([email],subject="FleaMddarket验证码",priority="medium",message=code)
+            sendEmail.delay()
+            deleteRow.apply_async((store.pk,), countdown=600)
+
+            return Response(data=store.pk,status=200)
+        return Response(status=400)
 
 def upVersion():
     version = Version.objects.get(pk=1)
@@ -41,6 +66,8 @@ class ProductFilter(filters.FilterSet):
         fields = ['min_price','max_price','primarycategory','secondarycategory','brandNew','bargain','exchange']
 
 class ProductList(generics.ListCreateAPIView):
+    permission_classes = (IsAuthenticatedOrReadOnly,)
+    authentication_classes = (JSONWebTokenAuthentication,)
     serializer_class = ProductSerializer
     filter_class = ProductFilter
     filter_backends = (filters.DjangoFilterBackend,)
@@ -55,7 +82,8 @@ class ProductList(generics.ListCreateAPIView):
         latitude = self.request.query_params.get('latitude',None)
         longitude = self.request.query_params.get('longitude',None)
         distance = self.request.query_params.get('distance',1000)
-        queryset = queryset.nearby(float(latitude),float(longitude),float(distance))
+        if latitude is not None:
+            queryset = queryset.nearby(float(latitude),float(longitude),float(distance))
         if sortType is not None:
             if sortType=="distance":
                 #do nothing already sorted by distance
@@ -67,7 +95,7 @@ class ProductList(generics.ListCreateAPIView):
             elif sortType=="posttime":
                 queryset = queryset.orderByPostTime()
             elif sortType=="default":
-                queryset = queryset
+                queryset = queryset.orderByPostTime()
             else:
                 queryset = Product.objects.all()
 
@@ -92,3 +120,27 @@ class UserRegister(generics.CreateAPIView):
         permissions.AllowAny
     ]
     serializer_class = UserSerializer
+
+    def post(self,request,*args,**kwargs):
+        #verify email
+        try:
+            store = EmailCode.objects.get(pk=request.data["id"])
+            if store.code!=request.data["code"]:
+                #wrong verification code
+                return Response({"error":"1"},status=400)
+        except EmailCode.DoesNotExist:
+            #code expired
+            return Response({"error":"2"},status=400)
+        
+        email = request.data["email"]
+        #check email not exist
+        if MyUser.objects.filter(email=email).exists():
+            #duplicate email
+            return Response({"error":"3"},status=400)
+
+        #check nickname not exist
+        if MyUser.objects.filter(nickname=request.data["nickname"]).exists():
+            #duplicate nickname
+            return Response({"error":"4"},status=400)
+
+        return super(UserRegister,self).post(request,args,kwargs)

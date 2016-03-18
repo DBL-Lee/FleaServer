@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from product.models import Product,ImageUUID,PrimaryCategory,SecondaryCategory,MyUser
+from product.models import Product,ImageUUID,PrimaryCategory,SecondaryCategory,MyUser,EmailCode
 from django.contrib.auth import get_user_model
 
 class UserSerializer(serializers.ModelSerializer):
@@ -22,14 +22,17 @@ class ImageUUIDSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     images = ImageUUIDSerializer(many=True) 
     category = serializers.PrimaryKeyRelatedField(queryset=SecondaryCategory.objects.all())
+    usernickname = serializers.ReadOnlyField(source='user.nickname')
+
 
     class Meta:
         model = Product
-        fields = ('id','title','mainimage','city','country','images','category','price','location','latitude','longitude','amount','postedTime','originalPrice','brandNew','bargain','exchange','description')
+        fields = ('id','usernickname','title','mainimage','city','country','images','category','price','location','latitude','longitude','amount','postedTime','originalPrice','brandNew','bargain','exchange','description')
         
     def create(self, validated_data):
+        user = self.context['request'].user
         images = validated_data.pop('images')
-        product = Product.objects.create(**validated_data)
+        product = Product.objects.create(user=user,**validated_data)
         for image in images:
             ImageUUID.objects.create(product=product,**image)
         return product

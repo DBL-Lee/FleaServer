@@ -12,6 +12,11 @@ https://docs.djangoproject.com/en/1.9/ref/settings/
 
 import os
 import utils
+import datetime
+import djcelery
+BROKER_URL = "amqp://guest:guest@localhost:5672//"
+
+
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -40,6 +45,9 @@ INSTALLED_APPS = [
 	'rest_framework',
     'django_filters',
     'product',
+    'post_office',
+    'djcelery',
+    'djcelery_email',
 ]
 
 MIDDLEWARE_CLASSES = [
@@ -57,11 +65,46 @@ ROOT_URLCONF = 'FleaServer.urls'
 
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 5
+    'PAGE_SIZE': 5,
+    'DEFAULT_AUTHENTICATION_CLASSES':(
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+        'rest_framework_jwt.authentication.JSONWebTokenAuthentication',
+    ),
 }
 
 AUTH_USER_MODEL = 'product.MyUser'
 
+
+EMAIL_BACKEND = 'post_office.EmailBackend'
+POST_OFFICE_BACKEND = 'djcelery_email.backends.CeleryEmailBackend'
+
+POST_OFFICE = {
+    'DEFAULT_PRIORITY':'now'
+}
+
+EMAIL_USE_TLS = True
+
+EMAIL_HOST = 'smtp.gmail.com'
+
+EMAIL_HOST_USER = 'hzc930916@gmail.com'
+
+#Must generate specific password for your app in [gmail settings][1]
+EMAIL_HOST_PASSWORD = 'hzc9817896'
+
+EMAIL_PORT = 587
+
+#This did the trick
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+JWT_AUTH = {
+    'JWT_RESPONSE_PAYLOAD_HANDLER':
+    'product.utils.jwt_response_payload_handler', 
+        'JWT_EXPIRATION_DELTA':datetime.timedelta(days=7),
+    'JWT_ALLOW_REFRESH': True,
+    'JWT_REFRESH_EXPIRATION_DELTA': datetime.timedelta.max
+
+}
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',

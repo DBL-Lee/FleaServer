@@ -1,10 +1,14 @@
 from __future__ import unicode_literals
 from django.utils import timezone
+from django.conf import settings
 from django.db import models
 from django.utils.http import urlquote
 from django.utils.translation import ugettext_lazy as _
 from django.core.mail import send_mail
 from django.contrib.auth.models import AbstractBaseUser,BaseUserManager
+
+class EmailCode(models.Model):
+    code = models.CharField(max_length=5)
 
 class ProductQuerySet(models.query.QuerySet):
     def nearby(self,latitude,longitude,distance):
@@ -60,6 +64,8 @@ class Product(models.Model):
     bargain = models.NullBooleanField()
     exchange = models.NullBooleanField()
     description = models.TextField(blank=True, default='')
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL,related_name='products',on_delete=models.CASCADE)
 
     objects = ProductManager()
 
@@ -101,9 +107,10 @@ class MyUser(AbstractBaseUser):
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
+    nickname = models.CharField(max_length=254,unique=True)
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = []
+    REQUIRED_FIELDS = ['nickname',]
     
     objects = MyUserManager()
     

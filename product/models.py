@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 from django.utils import timezone
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils.http import urlquote
 from django.utils.translation import ugettext_lazy as _
 from django.core.mail import send_mail
@@ -80,6 +81,7 @@ class Version(models.Model):
 class PrimaryCategory(models.Model):
     title = models.CharField(max_length=10)
     icon = models.CharField(max_length=40, blank=True, default='')
+    icon_naked = models.CharField(max_length=40,blank=True,default='')
     version = models.ForeignKey(Version,default=1)
 
 class SecondaryCategory(models.Model):
@@ -87,18 +89,20 @@ class SecondaryCategory(models.Model):
     primaryCategory = models.ForeignKey(PrimaryCategory, related_name='secondary')
 
 class MyUserManager(BaseUserManager):
-    def create_user(self,email,password,**extra_fields):
+    def get_by_natural_key(self, username):
+        return self.get(Q(email__iexact=username)|Q(nickname__iexact=username))
+    def create_user(self,email,password,nickname,**extra_fields):
         now = timezone.now()
         if not email:
             raise ValueError('Email must be set')
         email = self.normalize_email(email)
-        user = self.model(email=email,date_joined=now,last_login=now,**extra_fields)
+        user = self.model(email=email,nickname=nickname,date_joined=now,last_login=now,**extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_superuser(self,email,password,**extra_fields):
-        user = self.create_user(email,password=password,**extra_fields)
+    def create_superuser(self,email,nickname,password,**extra_fields):
+        user = self.create_user(email,nickname=nickname,password=password,**extra_fields)
         user.is_admin = True
         user.save(using=self._db)
         return user
@@ -109,7 +113,14 @@ class MyUser(AbstractBaseUser):
     is_admin = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
     nickname = models.CharField(max_length=254,unique=True)
-    avatar = models.CharField(max_length=50,default="defaultavatar.png")
+    avatar = models.CharField(max_length=50,default="default")
+
+    EMUser = models.CharField(max_length=20,null=True)
+    EMPass = models.CharField(max_length=10,null=True)
+    
+    gender = models.IntegerField(null=True)
+    location = models.CharField(max_length=100,null=True)
+    introduction = models.CharField(max_length=200,null=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['nickname',]
@@ -119,6 +130,21 @@ class MyUser(AbstractBaseUser):
     class Meta:
         verbose_name = _('user')
         verbose_name_plural = _('users')
+    def getPostedProducts(self):
+        return Product.objects.all().filter(user=self).order_by("-postedTime")
+
+    def getSoldProduct(self):
+        return Product.objects.all().filter(user=self).filter(buyer__isnull=False).order_by("-postedTime")
+    def getBoughtProduct(self):
+        return Product.objects.all().filter(buyer=self).order_by("-postedTime")
+
+    def totalTransactionCount(self):
+        return self.boughtProductCount()+self.soldProductCount()
+
+    def goodFeedBackCount(self):
+        sentGood = self.sentFeedbacks.filter(rating=0).count()
+        receivedGood = self.receivedFeedbacks.filter(rating=0).count()
+        return sentGood+receivedGood
 
     def postedProductCount(self):
         return self.products.count()
@@ -148,5 +174,11 @@ class MyUser(AbstractBaseUser):
     def is_staff(self):
         return self.is_admin
 
-    def email_user(self,subject,message,from_email=None):
-        send_mail(subject,message,from_email,[self.email])
+class FeedBack(models.Model):
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,related_name="sentFeedbacks",null=True)
+    receiver = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,related_name="receivedFeedbacks",null=True)
+    content = models.CharField(max_length = 255)
+    product = models.ForeignKey(Product,related_name="feedback",on_delete=models.SET_NULL,null=True)
+    #rating 0-good 1-medium 2-bad
+    rating = models.IntegerField()
+

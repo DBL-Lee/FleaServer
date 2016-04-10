@@ -9,7 +9,7 @@ from product.serializers import ProductSerializer,PriCatSerializer,UserSerialize
 from django.http import HttpResponse
 import django_filters
 from django.contrib.auth import get_user_model
-
+from rest_framework_jwt import views as jwt_view
 from rest_framework_jwt.authentication import JSONWebTokenAuthentication
 import string
 import random
@@ -17,42 +17,108 @@ from post_office import mail
 from django.core.mail import send_mail
 from product.tasks import sendEmail,deleteRow
 from collections import OrderedDict
+from push_notifications.models import APNSDevice
+from chat.tasks import obtainrefreshToken,createEMaccount
 
 class SelfPostedProduct(generics.ListAPIView):
     permission_classes = (IsAuthenticated,)
     authentication_classes = (JSONWebTokenAuthentication,)
     serializer_class = ProductSerializer
+    pagination_class = pagination.PageNumberPagination
 
     def get_queryset(self):
-        queryset = Product.objects.all()
-        queryset = queryset.filter(user=self.request.user)
-        queryset = queryset.order_by('-postedTime')
-        return queryset
+        return self.request.user.getPostedProducts()
 
 
-class SelfSoldProduct(APIView):
+class SelfSoldProduct(generics.ListAPIView):
 
     permission_classes = (IsAuthenticated,)
     authentication_classes = (JSONWebTokenAuthentication,)
     serializer_class = ProductSerializer
 
+    pagination_class = pagination.PageNumberPagination
+
     def get_queryset(self):
-        queryset = Product.objects.all()
-        queryset = queryset.filter(user=self.request.user).filter(buyer__isnull=False)
-        queryset = queryset.order_by('-postedTime')
-        return queryset
+        return self.request.user.getSoldProduct()
 
     
-class SelfBoughtProduct(APIView):
+class SelfBoughtProduct(generics.ListAPIView):
     permission_classes = (IsAuthenticated,)
     authentication_classes = (JSONWebTokenAuthentication,)
     serializer_class = ProductSerializer
+    pagination_class = pagination.PageNumberPagination
 
     def get_queryset(self):
-        queryset = Product.objects.all()
-        queryset = queryset.filter(buyer=self.request.user)
-        queryset = queryset.order_by('-postedTime')
-        return queryset
+        return self.request.user.getBoughtProduct()
+
+class UpdateUser(generics.UpdateAPIView):
+    permission_classes = (IsAuthenticatedOrReadOnly,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    def post(self,request,*args,**kwwargs):
+        avatar = request.data.get("avatar",None)
+        if avatar is not None:
+            request.user.avatar = avatar
+
+        gender = request.data.get("gender",None)
+        if gender is not None:
+            request.user.gender = gender
+
+        location = request.data.get("location",None)
+        if location is not None:
+            request.user.location = location
+
+        introduction = request.data.get("introduction",None)
+        if introduction is not None:
+            request.user.introduction = introduction
+
+        request.user.save()
+
+        return Response(status=200)
+
+
+class UserOverview(APIView):
+
+    def post(self,request,*args,**kwargs):
+        userid = request.data.get("userid",None)
+        EMUsername = request.data.get("emusername",None)
+        try:
+            if userid is not None:
+                user = MyUser.objects.get(pk=userid)
+            else:
+                user = MyUser.objects.get(EMUser__iexact=EMUsername)
+        except MyUser.DoesNotExist:
+            return Response({"error":"用户不存在"},status=400)
+        ret = OrderedDict()
+        ret['id'] = user.pk
+        ret['nickname'] = user.nickname
+        ret['avatar'] = user.avatar
+        ret['posted'] = user.postedProductCount()
+        ret['transaction'] = user.totalTransactionCount()
+        ret['goodfeedback'] = user.goodFeedBackCount()
+        ret['emusername'] = user.EMUser
+        if user.gender is not None:
+            ret['gender'] = user.gender
+        if user.location is not None:
+            ret['location'] = user.location
+        if user.introduction is not None:
+            ret['introduction'] = user.introduction
+        return(Response(ret,status=200))
+
+class UserPostedProduct(generics.ListAPIView):
+    serializer_class = ProductSerializer
+    pagination_class = pagination.PageNumberPagination
+    
+    def post(self, request, *args, **kwargs):
+        return self.list(request, *args, **kwargs)
+
+    def get_queryset(self):
+        userid = self.request.data["user"]
+        try:
+            user = MyUser.objects.get(pk=userid)
+        except MyUser.DoesNotExist:
+            return Response({"error":"用户不存在"},status=400)
+
+        return user.getPostedProducts()
 
 class SelfInfo(APIView):
     permission_classes = (IsAuthenticated,)
@@ -60,6 +126,7 @@ class SelfInfo(APIView):
     def get(self,request,*args,**kwargs):
         user = request.user
         ret = OrderedDict()
+        ret['id'] = user.pk
         ret['nickname'] = user.nickname
         ret['avatar'] = user.avatar
         ret['posted'] = user.postedProductCount()
@@ -124,6 +191,7 @@ class ProductList(generics.ListCreateAPIView):
     serializer_class = ProductSerializer
     filter_class = ProductFilter
     filter_backends = (filters.DjangoFilterBackend,)
+    pagination_class = pagination.PageNumberPagination
 
     def get_queryset(self):  
         sortType = self.request.query_params.get('sorttype',None)
@@ -154,6 +222,29 @@ class ProductList(generics.ListCreateAPIView):
 
         return queryset
 
+class BuyProduct(APIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    def post(self,request,*args,**kwargs):
+        id = request.data["id"]
+        try:
+            product = Product.objects.get(pk=id)
+        except Product.DoesNotExist:
+            data = {"error":"商品不存在"}
+            return Response(data,status=400)
+
+        if product.buyer is not None:
+            data = {"error":"商品已出售"}
+            return Response(data,status=400)
+
+        if product.user==request.user:
+            data={"error":"不能买自己的商品"}
+            return Response(data,status=400)
+
+        product.buyer = request.user
+        product.save()
+        return Response(status=200)
+
 class ProductDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
@@ -161,7 +252,6 @@ class ProductDetail(generics.RetrieveUpdateDestroyAPIView):
 class CategoryList(VersionedListCreateAPIView):
     queryset = PrimaryCategory.objects.all()
     serializer_class = PriCatSerializer
-    pagination_class = None
 
 class CategoryDetail(VersionedRetrieveUpdateDestroyAPIView): 
     queryset = PrimaryCategory.objects.all()
@@ -178,22 +268,36 @@ class UserRegister(generics.CreateAPIView):
         #verify email
         try:
             store = EmailCode.objects.get(pk=request.data["id"])
-            if store.code!=request.data["code"]:
+           # if store.code!=request.data["code"]:
                 #wrong verification code
-                return Response({"error":"1"},status=400)
+            #    return Response({"error":"验证码不正确"},status=400)
         except EmailCode.DoesNotExist:
             #code expired
-            return Response({"error":"2"},status=400)
+            return Response({"error":"验证码已过期，请重新获取"},status=400)
         
         email = request.data["email"]
         #check email not exist
-        if MyUser.objects.filter(email=email).exists():
+        if MyUser.objects.filter(email__iexact=email).exists():
             #duplicate email
-            return Response({"error":"3"},status=400)
+            return Response({"error":"邮箱地址已被注册"},status=400)
+
+        nickname = request.data["nickname"]
 
         #check nickname not exist
-        if MyUser.objects.filter(nickname=request.data["nickname"]).exists():
+        if MyUser.objects.filter(nickname__iexact=nickname).exists():
             #duplicate nickname
-            return Response({"error":"4"},status=400)
+            return Response({"error":"昵称已被使用"},status=400)
 
-        return super(UserRegister,self).post(request,args,kwargs)
+        res = super(UserRegister,self).post(request,args,kwargs)
+        
+        if res.status_code<400:
+            #register for EM
+            emusername = verifycodegenerator(size=20)
+            while MyUser.objects.all().filter(EMUser=emusername).exists():
+                emusername = verifycodegenerator(size=20)
+        
+            #username is now unique
+            empassword = verifycodegenerator(size=10)
+
+            createEMaccount(email,emusername,empassword,nickname)
+        return res

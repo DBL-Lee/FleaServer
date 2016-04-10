@@ -1,15 +1,20 @@
 from rest_framework import serializers
-from product.models import Product,ImageUUID,PrimaryCategory,SecondaryCategory,MyUser,EmailCode
+from product.models import Product,ImageUUID,PrimaryCategory,SecondaryCategory,MyUser,EmailCode,FeedBack
 from django.contrib.auth import get_user_model
+
+class FeedbackSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeedBack
+        fields = ('id','sender','product','receiver','content','rating')
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
-        fields = ('id','email','password','avatar')
+        fields = ('id','email','nickname','EMUser','EMPass','password','avatar','gender','location','introduction')
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
-        user = get_user_model().objects.create_user(email=validated_data['email'],password=validated_data['password'])
+        user = get_user_model().objects.create_user(email=validated_data['email'],nickname=validated_data['nickname'],password=validated_data['password'])
 
         return user
 
@@ -71,7 +76,7 @@ class PriCatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PrimaryCategory
-        fields = ('id','icon','title','secondary',)
+        fields = ('id','icon','icon_naked','title','secondary',)
 
     def create(self, validated_data):
         secondaries = validated_data.pop('secondary')

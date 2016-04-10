@@ -48,6 +48,9 @@ INSTALLED_APPS = [
     'post_office',
     'djcelery',
     'djcelery_email',
+    'push_notifications',
+    'chat',
+    'requests',
 ]
 
 MIDDLEWARE_CLASSES = [
@@ -64,7 +67,7 @@ MIDDLEWARE_CLASSES = [
 ROOT_URLCONF = 'FleaServer.urls'
 
 REST_FRAMEWORK = {
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS':None,
     'PAGE_SIZE': 5,
     'DEFAULT_AUTHENTICATION_CLASSES':(
         'rest_framework.authentication.SessionAuthentication',
@@ -74,7 +77,6 @@ REST_FRAMEWORK = {
 }
 
 AUTH_USER_MODEL = 'product.MyUser'
-
 
 EMAIL_BACKEND = 'post_office.EmailBackend'
 POST_OFFICE_BACKEND = 'djcelery_email.backends.CeleryEmailBackend'
@@ -105,6 +107,13 @@ JWT_AUTH = {
     'JWT_REFRESH_EXPIRATION_DELTA': datetime.timedelta.max
 
 }
+
+
+PUSH_NOTIFICATIONS_SETTINGS = {
+    "APNS_CERTIFICATE" : "/Users/Lee/Documents/Apps/FleaServer/FleaServer/iphone_ck.pem"
+}
+
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',

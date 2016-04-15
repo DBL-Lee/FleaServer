@@ -34,7 +34,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        fields = ('id','usernickname','useravatar','userid','title','mainimage','city','country','images','category','price','location','latitude','longitude','amount','postedTime','originalPrice','brandNew','bargain','exchange','description')
+        fields = ('id','usernickname','useravatar','userid','title','mainimage','city','country','images','category','price','location','latitude','longitude','soldAmount','amount','postedTime','originalPrice','brandNew','bargain','exchange','description')
         
     def create(self, validated_data):
         user = self.context['request'].user

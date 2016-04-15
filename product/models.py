@@ -58,6 +58,7 @@ class Product(models.Model):
     city = models.CharField(max_length=20)
     country = models.CharField(max_length=10)
     amount = models.IntegerField()
+    soldAmount = models.IntegerField(default=0)
     category = models.ForeignKey('SecondaryCategory', on_delete=models.SET_NULL,null=True)
     postedTime = models.DateTimeField(auto_now_add=True)
     originalPrice = models.DecimalField(max_digits=10,decimal_places=2, null=True)
@@ -67,9 +68,19 @@ class Product(models.Model):
     description = models.TextField(blank=True, default='')
     
     user = models.ForeignKey(settings.AUTH_USER_MODEL,related_name='products',on_delete=models.CASCADE)
-    buyer = models.ForeignKey(settings.AUTH_USER_MODEL,related_name='boughtProducts',on_delete=models.SET_NULL,null=True)
+    #boughtBy = models.ManyToManyField(settings.AUTH_USER_MODEL,related_name='boughtProducts')
+    #buyer = models.ManyToManyField(settings.AUTH_USER_MODEL,related_name='pendingProducts')
+    orderer = models.ManyToManyField(settings.AUTH_USER_MODEL,through='OrderMembership',related_name='orderedProducts')
 
     objects = ProductManager()
+
+class OrderMembership(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete = models.CASCADE)
+    time_ordered = models.DateField(auto_now_add=True)
+    amount = models.IntegerField()
+    accepted = models.NullBooleanField()
+    finished = models.BooleanField(default=False)
 
 class ImageUUID(models.Model):
 	product = models.ForeignKey('Product',on_delete=models.CASCADE,related_name='images')
@@ -130,13 +141,19 @@ class MyUser(AbstractBaseUser):
     class Meta:
         verbose_name = _('user')
         verbose_name_plural = _('users')
-    def getPostedProducts(self):
-        return Product.objects.all().filter(user=self).order_by("-postedTime")
+    def getPostedProduct(self):
+        return self.products.order_by("-postedTime")
 
     def getSoldProduct(self):
-        return Product.objects.all().filter(user=self).filter(buyer__isnull=False).order_by("-postedTime")
+        return self.getPostedProduct().filter(ordermembership__finished=True).order_by("-postedTime")
+
     def getBoughtProduct(self):
-        return Product.objects.all().filter(buyer=self).order_by("-postedTime")
+        return self.orderedProducts.filter(ordermembership__finished=True).order_by("-postedTime")
+
+    def getOrderedProduct(self):
+        return self.orderedProducts.order_by("-postedTime")
+    def getPendingProduct(self):
+        return self.orderedProducts.filter(ordermembership__accepted=True).order_by("-postedTime")
 
     def totalTransactionCount(self):
         return self.boughtProductCount()+self.soldProductCount()
@@ -146,14 +163,20 @@ class MyUser(AbstractBaseUser):
         receivedGood = self.receivedFeedbacks.filter(rating=0).count()
         return sentGood+receivedGood
 
+    def orderedProductCount(self):
+        return self.getOrderedProduct().count()
+    
+    def pendingProductCount(self):
+        return self.getPendingProduct().count()
+
     def postedProductCount(self):
-        return self.products.count()
+        return self.getPostedProduct().count()
 
     def boughtProductCount(self):
-        return self.boughtProducts.count()
+        return self.getBoughtProduct().count()
 
     def soldProductCount(self):
-        return self.products.filter(buyer__isnull=False).count()
+        return self.getSoldProduct().count()
 
     def get_full_name(self):
         return self.email

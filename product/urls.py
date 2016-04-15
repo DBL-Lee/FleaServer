@@ -4,6 +4,7 @@ from rest_framework.urlpatterns import format_suffix_patterns
 
 urlpatterns = [
 	url(r'^products/$',views.ProductList.as_view()),
+    url(r'^products/order/$',views.OrderProduct.as_view()),
     url(r'^products/buy/$',views.BuyProduct.as_view()),
 	url(r'^products/(?P<pk>[0-9]+)/$',views.ProductDetail.as_view()),
     url(r'^products/primarycategory/$',views.CategoryList.as_view()),
@@ -12,6 +13,8 @@ urlpatterns = [
     url(r'^user/register/$',views.UserRegister.as_view()),
     url(r'^user/email/$',views.EmailUser.as_view()),
     url(r'^user/self/overview/$',views.SelfInfo.as_view()),
+    url(r'^user/self/ordered/$',views.SelfOrderedProduct.as_view()),
+    url(r'^user/self/pending/$',views.SelfPendingProduct.as_view()),
     url(r'^user/self/posted/$',views.SelfPostedProduct.as_view()),
     url(r'^user/self/sold/$',views.SelfSoldProduct.as_view()),
     url(r'^user/self/bought/$',views.SelfBoughtProduct.as_view()),

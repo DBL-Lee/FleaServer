@@ -4,7 +4,7 @@ from rest_framework import status,filters, mixins,generics,pagination,permission
 from rest_framework.permissions import IsAuthenticatedOrReadOnly,IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from product.models import Product,PrimaryCategory,Version,EmailCode,MyUser
+from product.models import Product,PrimaryCategory,Version,EmailCode,MyUser,OrderMembership
 from product.serializers import ProductSerializer,PriCatSerializer,UserSerializer
 from django.http import HttpResponse
 import django_filters
@@ -20,6 +20,26 @@ from collections import OrderedDict
 from push_notifications.models import APNSDevice
 from chat.tasks import obtainrefreshToken,createEMaccount
 
+class SelfOrderedProduct(generics.ListAPIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    serializer_class = ProductSerializer
+    pagination_class = pagination.PageNumberPagination
+
+    def get_queryset(self):
+        return self.request.user.getOrderedProduct()
+
+
+class SelfPendingProduct(generics.ListAPIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    serializer_class = ProductSerializer
+    pagination_class = pagination.PageNumberPagination
+
+    def get_queryset(self):
+        return self.request.user.getPendingProduct()
+
+
 class SelfPostedProduct(generics.ListAPIView):
     permission_classes = (IsAuthenticated,)
     authentication_classes = (JSONWebTokenAuthentication,)
@@ -27,7 +47,7 @@ class SelfPostedProduct(generics.ListAPIView):
     pagination_class = pagination.PageNumberPagination
 
     def get_queryset(self):
-        return self.request.user.getPostedProducts()
+        return self.request.user.getPostedProduct()
 
 
 class SelfSoldProduct(generics.ListAPIView):
@@ -118,7 +138,7 @@ class UserPostedProduct(generics.ListAPIView):
         except MyUser.DoesNotExist:
             return Response({"error":"用户不存在"},status=400)
 
-        return user.getPostedProducts()
+        return user.getPostedProduct()
 
 class SelfInfo(APIView):
     permission_classes = (IsAuthenticated,)
@@ -132,6 +152,8 @@ class SelfInfo(APIView):
         ret['posted'] = user.postedProductCount()
         ret['bought'] = user.boughtProductCount()
         ret['sold'] = user.soldProductCount()
+        ret['ordered'] = user.orderedProductCount()
+        ret['pending'] = user.pendingProductCount()
         return Response(ret,status=200)
 
 
@@ -222,29 +244,79 @@ class ProductList(generics.ListCreateAPIView):
 
         return queryset
 
-class BuyProduct(APIView):
+class OrderProduct(APIView):
     permission_classes = (IsAuthenticated,)
     authentication_classes = (JSONWebTokenAuthentication,)
     def post(self,request,*args,**kwargs):
-        id = request.data["id"]
+        id = request.data["productid"]
+        amount = request.data.get("amount",1)
         try:
             product = Product.objects.get(pk=id)
         except Product.DoesNotExist:
             data = {"error":"商品不存在"}
             return Response(data,status=400)
 
-        if product.buyer is not None:
-            data = {"error":"商品已出售"}
+        if OrderMembership.objects.filter(product=product,user=request.user).count>0:
+            data = {"error":"您已经求购个过该产品了"}
+            return Response(data,status=400)
+
+        if product.amount-product.soldAmount<amount:
+            data = {"error":"商品库存不足"}
+            return Response(data,status=400)
+
+        if product.user==request.user:
+            data={"error":"不能求购自己的商品"}
+            return Response(data,status=400)
+
+        order = OrderMembership(product=product,user = request.user,amount = amount)
+        order.save()
+        return Response({},status=200)
+
+class BuyProduct(APIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    def post(self,request,*args,**kwargs):
+        id = request.data["productid"]
+        userids = request.data["userid"]
+        try:
+            product = Product.objects.get(pk=id)
+        except Product.DoesNotExist:
+            data = {"error":"商品不存在"}
+            return Response(data,status=400)
+
+
+        for userid in userids:
+            buyer = MyUser.objects.get(pk=userid)
+            order = buyer.orderedProducts.get(product=product)
+            product.soldAmount += order.amount
+            order.accepted = True
+            order.save()
+
+        return Response(status=200)
+
+
+class FinishTransactionProduct(APIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    def post(self,request,*args,**kwargs):
+        id = request.data["productid"]
+        userid = request.data["userid"]
+        try:
+            product = Product.objects.get(pk=id)
+        except Product.DoesNotExist:
+            data = {"error":"商品不存在"}
             return Response(data,status=400)
 
         if product.user==request.user:
             data={"error":"不能买自己的商品"}
             return Response(data,status=400)
 
-        product.buyer = request.user
+        buyer = MyUser.obects.get(pk=userid)
+        product.buyer.remove(buyer)
+        product.boughtBy.add(buyer)
         product.save()
         return Response(status=200)
-
+    
 class ProductDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer

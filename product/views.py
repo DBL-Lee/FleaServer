@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticatedOrReadOnly,IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from product.models import Product,PrimaryCategory,Version,EmailCode,MyUser,OrderMembership
-from product.serializers import ProductSerializer,PriCatSerializer,UserSerializer
+from product.serializers import ProductSerializer,PriCatSerializer,UserSerializer,OrderPeopleSerializer,OrderSerializer,AwaitingAcceptProductSerializer
 from django.http import HttpResponse
 import django_filters
 from django.contrib.auth import get_user_model
@@ -23,21 +23,21 @@ from chat.tasks import obtainrefreshToken,createEMaccount
 class SelfOrderedProduct(generics.ListAPIView):
     permission_classes = (IsAuthenticated,)
     authentication_classes = (JSONWebTokenAuthentication,)
-    serializer_class = ProductSerializer
+    serializer_class = OrderSerializer
     pagination_class = pagination.PageNumberPagination
 
     def get_queryset(self):
-        return self.request.user.getOrderedProduct()
+        return self.request.user.getOrderedOrder()
+   
 
-
-class SelfPendingProduct(generics.ListAPIView):
+class SelfPendingBuyProduct(generics.ListAPIView):
     permission_classes = (IsAuthenticated,)
     authentication_classes = (JSONWebTokenAuthentication,)
     serializer_class = ProductSerializer
     pagination_class = pagination.PageNumberPagination
 
     def get_queryset(self):
-        return self.request.user.getPendingProduct()
+        return self.request.user.getPendingBuyProduct()
 
 
 class SelfPostedProduct(generics.ListAPIView):
@@ -49,6 +49,23 @@ class SelfPostedProduct(generics.ListAPIView):
     def get_queryset(self):
         return self.request.user.getPostedProduct()
 
+class SelfAwaitingAcceptProduct(generics.ListAPIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    serializer_class = AwaitingAcceptProductSerializer
+    pagination_class = pagination.PageNumberPagination
+
+    def get_queryset(self):
+        return self.request.user.getAwaitingAcceptProduct()
+
+class SelfAwaitingPeople(generics.ListAPIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    serializer_class = OrderPeopleSerializer
+    
+    def get_queryset(self):
+        id = self.request.query_params["productid"]
+        return self.request.user.getAwaitingAcceptOrder().filter(product__id=id)
 
 class SelfSoldProduct(generics.ListAPIView):
 
@@ -150,10 +167,12 @@ class SelfInfo(APIView):
         ret['nickname'] = user.nickname
         ret['avatar'] = user.avatar
         ret['posted'] = user.postedProductCount()
-        ret['bought'] = user.boughtProductCount()
-        ret['sold'] = user.soldProductCount()
-        ret['ordered'] = user.orderedProductCount()
-        ret['pending'] = user.pendingProductCount()
+        ret['bought'] = user.boughtOrderCount()
+        ret['sold'] = user.soldOrderCount()
+        ret['ordered'] = user.orderedOrderCount()
+        ret['pendingbuy'] = user.pendingBuyOrderCount()
+        ret['pendingsell'] = user.pendingSellOrderCount()
+        ret['awaiting'] = user.awaitingAcceptOrderCount()
         return Response(ret,status=200)
 
 
@@ -255,8 +274,7 @@ class OrderProduct(APIView):
         except Product.DoesNotExist:
             data = {"error":"商品不存在"}
             return Response(data,status=400)
-
-        if OrderMembership.objects.filter(product=product,user=request.user).count>0:
+        if OrderMembership.objects.filter(product=product,user=request.user).count()>0:
             data = {"error":"您已经求购个过该产品了"}
             return Response(data,status=400)
 

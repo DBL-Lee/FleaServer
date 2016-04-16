@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from product.models import Product,ImageUUID,PrimaryCategory,SecondaryCategory,MyUser,EmailCode,FeedBack
+from product.models import Product,ImageUUID,PrimaryCategory,SecondaryCategory,MyUser,EmailCode,FeedBack,OrderMembership
 from django.contrib.auth import get_user_model
 
 class FeedbackSerializer(serializers.ModelSerializer):
@@ -94,3 +94,29 @@ class PriCatSerializer(serializers.ModelSerializer):
             SecondaryCategory.objects.create(primaryCategory=instance,**secondary)
         instance.save()
         return instance
+
+class AwaitingAcceptProductSerializer(ProductSerializer):
+    awaiting = serializers.SerializerMethodField('awaiting_count')
+
+    class Meta(ProductSerializer.Meta):
+        fields = ProductSerializer.Meta.fields+('awaiting',)
+
+    def awaiting_count(self, object):
+        return OrderMembership.objects.filter(product=object,accepted__isnull=True).count()
+
+class OrderPeopleSerializer(serializers.ModelSerializer):
+    userid = serializers.ReadOnlyField(source='user.pk')
+    nickname = serializers.ReadOnlyField(source='user.nickname')
+    avatar = serializers.ReadOnlyField(source='user.avatar')
+    class Meta:
+        model = OrderMembership
+        fields = ('userid','nickname','avatar','amount','time_ordered',)
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    product = ProductSerializer()
+    userid = serializers.ReadOnlyField(source='user.pk')
+    sellerid = serializers.ReadOnlyField(source='product.user.pk')
+    class Meta:
+        model = OrderMembership
+        fields = ('product','userid','sellerid','amount','time_ordered',)

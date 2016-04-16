@@ -144,39 +144,56 @@ class MyUser(AbstractBaseUser):
     def getPostedProduct(self):
         return self.products.order_by("-postedTime")
 
-    def getSoldProduct(self):
-        return self.getPostedProduct().filter(ordermembership__finished=True).order_by("-postedTime")
+    def getAwaitingAcceptProduct(self):
+        return self.getPostedProduct().filter(ordermembership__isnull=False,ordermembership__accepted__isnull=True)
+    
+    def getAwaitingAcceptOrder(self):
+        return OrderMembership.objects.filter(product__user=self,accepted__isnull=True).order_by("-time_ordered")
 
-    def getBoughtProduct(self):
-        return self.orderedProducts.filter(ordermembership__finished=True).order_by("-postedTime")
+    def getPendingSellOrder(self):
+        return OrderMembership.objects.filter(product__user=self,accepted=True,finished=False).order_by("-time_ordered")
 
-    def getOrderedProduct(self):
-        return self.orderedProducts.order_by("-postedTime")
-    def getPendingProduct(self):
-        return self.orderedProducts.filter(ordermembership__accepted=True).order_by("-postedTime")
+    def getSoldOrder(self):
+        return OrderMembership.objects.filter(product__user=self,finished=True).order_by("-time_ordered")
+
+    def getBoughtOrder(self):
+        return OrderMembership.objects.filter(user=self,finished=True).order_by("-time_ordered")
+
+    def getOrderedOrder(self):
+        return OrderMembership.objects.filter(user=self,accepted__isnull=True).order_by("-time_ordered")
+
+
+    def getPendingBuyOrder(self):
+        return OrderMembership.objects.filter(user=self,accepted=True,finished=False).order_by("-time_ordered")
 
     def totalTransactionCount(self):
-        return self.boughtProductCount()+self.soldProductCount()
+        return self.boughtOrderCount()+self.soldOrderCount()
 
     def goodFeedBackCount(self):
         sentGood = self.sentFeedbacks.filter(rating=0).count()
         receivedGood = self.receivedFeedbacks.filter(rating=0).count()
         return sentGood+receivedGood
 
-    def orderedProductCount(self):
-        return self.getOrderedProduct().count()
+    def orderedOrderCount(self):
+        return self.getOrderedOrder().count()
     
-    def pendingProductCount(self):
-        return self.getPendingProduct().count()
+    def pendingBuyOrderCount(self):
+        return self.getPendingBuyOrder().count()
 
     def postedProductCount(self):
         return self.getPostedProduct().count()
 
-    def boughtProductCount(self):
-        return self.getBoughtProduct().count()
+    def boughtOrderCount(self):
+        return self.getBoughtOrder().count()
 
-    def soldProductCount(self):
-        return self.getSoldProduct().count()
+    def awaitingAcceptOrderCount(self):
+        return self.getAwaitingAcceptOrder().count()
+
+    def pendingSellOrderCount(self):
+        return self.getPendingSellOrder().count()
+
+    def soldOrderCount(self):
+        return self.getSoldOrder().count()
 
     def get_full_name(self):
         return self.email

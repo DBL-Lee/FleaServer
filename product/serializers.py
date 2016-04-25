@@ -5,7 +5,23 @@ from django.contrib.auth import get_user_model
 class FeedbackSerializer(serializers.ModelSerializer):
     class Meta:
         model = FeedBack
-        fields = ('id','sender','product','receiver','content','rating')
+        fields = ('id','sender','order','receiver','content','rating')
+
+    def create(self,validated_data):
+        user = self.context['request'].user
+        order = validated_data['order']
+        receiver = validated_data['receiver']
+        sender = user
+        if sender.pk == order.user.pk:
+            order.buyerfeedbacked = True
+        else:
+            order.sellerfeedbacked = True
+        if order.buyerfeedbacked and order.sellerfeedbacked:
+            order.ongoing = False
+        order.save()
+        feedback = FeedBack.objects.create(sender=sender,receiver=receiver,order=order,content=validated_data["content"],rating=validated_data["rating"])
+
+        return feedback
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -115,8 +131,10 @@ class OrderPeopleSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     product = ProductSerializer()
-    userid = serializers.ReadOnlyField(source='user.pk')
+    buyerid = serializers.ReadOnlyField(source='user.pk')
+    buyernickname = serializers.ReadOnlyField(source='user.nickname')
+    buyeravatar = serializers.ReadOnlyField(source='user.avatar')
     sellerid = serializers.ReadOnlyField(source='product.user.pk')
     class Meta:
         model = OrderMembership
-        fields = ('product','userid','sellerid','amount','time_ordered',)
+        fields = ('id','product','buyerid','buyernickname','buyeravatar','sellerid','amount','time_ordered','finished','accepted','buyerfeedbacked','sellerfeedbacked','ongoing','voidedbyseller')

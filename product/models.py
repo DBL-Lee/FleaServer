@@ -77,10 +77,14 @@ class Product(models.Model):
 class OrderMembership(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete = models.CASCADE)
-    time_ordered = models.DateField(auto_now_add=True)
+    time_ordered = models.DateTimeField(auto_now_add=True)
     amount = models.IntegerField()
+    ongoing = models.BooleanField(default=True)
+    voidedbyseller = models.NullBooleanField()
     accepted = models.NullBooleanField()
     finished = models.BooleanField(default=False)
+    sellerfeedbacked = models.BooleanField(default=False)
+    buyerfeedbacked = models.BooleanField(default=False)
 
 class ImageUUID(models.Model):
 	product = models.ForeignKey('Product',on_delete=models.CASCADE,related_name='images')
@@ -145,55 +149,77 @@ class MyUser(AbstractBaseUser):
         return self.products.order_by("-postedTime")
 
     def getAwaitingAcceptProduct(self):
-        return self.getPostedProduct().filter(ordermembership__isnull=False,ordermembership__accepted__isnull=True)
+        return self.getPostedProduct().filter(ordermembership__isnull=False,ordermembership__accepted__isnull=True,ordermembership__ongoing=True).distinct()
     
     def getAwaitingAcceptOrder(self):
-        return OrderMembership.objects.filter(product__user=self,accepted__isnull=True).order_by("-time_ordered")
+        return OrderMembership.objects.filter(product__user=self,accepted__isnull=True,ongoing=True).order_by("-time_ordered")
 
-    def getPendingSellOrder(self):
-        return OrderMembership.objects.filter(product__user=self,accepted=True,finished=False).order_by("-time_ordered")
+    def getPendingSellOrder(self,ongoing=None):
+        qs = OrderMembership.objects.filter(product__user=self,accepted=True,finished=False).order_by("-time_ordered")
+        
+        if ongoing is None:
+            return qs
+        return qs.filter(ongoing=ongoing)
 
-    def getSoldOrder(self):
-        return OrderMembership.objects.filter(product__user=self,finished=True).order_by("-time_ordered")
+    def getSoldOrder(self,ongoing):
+        qs = OrderMembership.objects.filter(product__user=self,finished=True).order_by("-time_ordered")
+        #all ordered orders
+        if ongoing is None:
+            return qs
+        return qs.filter(ongoing=ongoing)
 
-    def getBoughtOrder(self):
-        return OrderMembership.objects.filter(user=self,finished=True).order_by("-time_ordered")
+    def getBoughtOrder(self,ongoing):
+        qs = OrderMembership.objects.filter(user=self,finished=True).order_by("-time_ordered")
+        #all ordered orders
+        if ongoing is None:
+            return qs
+        return qs.filter(ongoing=ongoing)
 
-    def getOrderedOrder(self):
-        return OrderMembership.objects.filter(user=self,accepted__isnull=True).order_by("-time_ordered")
+    def getOrderedOrder(self,ongoing):
+        qs = OrderMembership.objects.filter(user=self,accepted__isnull=True).order_by("-time_ordered")
+        #all ordered orders
+        if ongoing is None:
+            return qs
+        #waiting orders
+        if ongoing:
+            return qs.filter(ongoing=True)
+        #failed orders
+        return qs.filter(ongoing=False)
 
+    def getPendingBuyOrder(self,ongoing):
+        qs = OrderMembership.objects.filter(user=self,accepted=True,finished=False).order_by("-time_ordered")
+        if ongoing is None:
+            return qs
+        return qs.filter(ongoing=ongoing)
 
-    def getPendingBuyOrder(self):
-        return OrderMembership.objects.filter(user=self,accepted=True,finished=False).order_by("-time_ordered")
 
     def totalTransactionCount(self):
-        return self.boughtOrderCount()+self.soldOrderCount()
+        return self.boughtOrderCount(ongoing=False)+self.soldOrderCount(ongoing=False)
 
     def goodFeedBackCount(self):
-        sentGood = self.sentFeedbacks.filter(rating=0).count()
         receivedGood = self.receivedFeedbacks.filter(rating=0).count()
-        return sentGood+receivedGood
+        return receivedGood
 
-    def orderedOrderCount(self):
-        return self.getOrderedOrder().count()
+    def orderedOrderCount(self,ongoing):
+        return self.getOrderedOrder(ongoing=ongoing).count()
     
-    def pendingBuyOrderCount(self):
-        return self.getPendingBuyOrder().count()
+    def pendingBuyOrderCount(self,ongoing):
+        return self.getPendingBuyOrder(ongoing=ongoing).count()
 
     def postedProductCount(self):
         return self.getPostedProduct().count()
 
-    def boughtOrderCount(self):
-        return self.getBoughtOrder().count()
+    def boughtOrderCount(self,ongoing):
+        return self.getBoughtOrder(ongoing=ongoing).count()
 
     def awaitingAcceptOrderCount(self):
         return self.getAwaitingAcceptOrder().count()
 
-    def pendingSellOrderCount(self):
-        return self.getPendingSellOrder().count()
+    def pendingSellOrderCount(self,ongoing):
+        return self.getPendingSellOrder(ongoing=ongoing).count()
 
-    def soldOrderCount(self):
-        return self.getSoldOrder().count()
+    def soldOrderCount(self,ongoing):
+        return self.getSoldOrder(ongoing=ongoing).count()
 
     def get_full_name(self):
         return self.email
@@ -218,7 +244,7 @@ class FeedBack(models.Model):
     sender = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,related_name="sentFeedbacks",null=True)
     receiver = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,related_name="receivedFeedbacks",null=True)
     content = models.CharField(max_length = 255)
-    product = models.ForeignKey(Product,related_name="feedback",on_delete=models.SET_NULL,null=True)
+    order = models.ForeignKey(OrderMembership,related_name="feedback",on_delete=models.SET_NULL,null=True)
     #rating 0-good 1-medium 2-bad
     rating = models.IntegerField()
 

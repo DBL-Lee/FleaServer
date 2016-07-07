@@ -2,15 +2,20 @@ from rest_framework import serializers
 from product.models import Product,ImageUUID,PrimaryCategory,SecondaryCategory,MyUser,EmailCode,FeedBack,OrderMembership
 from django.contrib.auth import get_user_model
 
+class ListFeedbackSerializer(serializers.ModelSerializer):
+    avatar = serializers.ReadOnlyField(source='sender.avatar')
+    nickname = serializers.ReadOnlyField(source='sender.nickname')
+    class Meta:
+        model = FeedBack
+        fields = ('id','avatar','nickname','content','rating')
+
 class FeedbackSerializer(serializers.ModelSerializer):
     class Meta:
         model = FeedBack
         fields = ('id','sender','order','receiver','content','rating')
 
     def create(self,validated_data):
-        print "here"
         user = self.context['request'].user
-        print validated_data
         order = validated_data['order']
         receiver = validated_data['receiver']
         sender = user
@@ -74,8 +79,7 @@ class ProductSerializer(serializers.ModelSerializer):
         instance.bargain = validated_data.get('bargain',instance.bargain)
         instance.exchange = validated_data.get('exchange',instance.exchange)
         instance.description = validated_data.get('description',instance.description)
-        cat = SecondaryCategory.objects.get(pk=validated_data['category'])
-        instance.category = cat
+        instance.category = validated_data['category']
         for image in instance.images.all():
             image.delete()
         images = validated_data.pop('images')
@@ -140,3 +144,52 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderMembership
         fields = ('id','product','buyerid','buyernickname','buyeravatar','sellerid','amount','time_ordered','finished','accepted','buyerfeedbacked','sellerfeedbacked','ongoing','voidedbyseller')
+
+class FollowerSerializer(serializers.ModelSerializer):
+    followed = serializers.SerializerMethodField('isfollowing')
+    
+    class Meta:
+        model = get_user_model()
+        fields = ('id','avatar','nickname','gender','location','followed','introduction')
+
+    def isfollowing(self,object):
+        request = self.context['request']
+        if hasattr(request,"user"):
+            user = request.user
+            return user.following.filter(pk=object.pk).exists()
+        else:
+            return None
+
+class FollowingSerializer(serializers.ModelSerializer):
+    followed = serializers.SerializerMethodField('isfollowing')
+    
+    class Meta:
+        model = get_user_model()
+        fields = ('id','avatar','nickname','gender','location','followed','introduction')
+
+    def isfollowing(self,object):
+        request = self.context['request']
+        if hasattr(request,"user"):
+            user = request.user
+            return user.following.filter(pk=object.pk).exists()
+        else:
+            return None
+
+
+class SearchUserSerializer(serializers.ModelSerializer):
+    followed = serializers.SerializerMethodField('isfollowing')
+    
+    class Meta:
+        model = get_user_model()
+        fields = ('id','avatar','nickname','gender','location','followed','introduction')
+
+    def isfollowing(self,object):
+        request = self.context['request']
+        if hasattr(request,"user"):
+            user = request.user
+            if user.is_authenticated():
+                return user.following.filter(pk=object.pk).exists()
+            else:
+                return False
+        else:
+            return False

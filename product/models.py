@@ -74,6 +74,9 @@ class Product(models.Model):
 
     objects = ProductManager()
 
+    def available(self):
+        return self.amount-self.soldAmount>0
+
 class OrderMembership(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete = models.CASCADE)
@@ -122,6 +125,11 @@ class MyUserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
+class UserFollowMapping(models.Model): 
+    master = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete = models.CASCADE, related_name = "followermapping")
+    slave = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete = models.CASCADE, related_name = "followingmapping")
+
+
 class MyUser(AbstractBaseUser):
     email = models.EmailField(max_length=254,unique=True)
     is_active = models.BooleanField(default=True)
@@ -136,6 +144,7 @@ class MyUser(AbstractBaseUser):
     gender = models.IntegerField(null=True)
     location = models.CharField(max_length=100,null=True)
     introduction = models.CharField(max_length=200,null=True)
+    follower = models.ManyToManyField(settings.AUTH_USER_MODEL,through='UserFollowMapping',related_name='following')
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['nickname',]
@@ -244,7 +253,8 @@ class FeedBack(models.Model):
     sender = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,related_name="sentFeedbacks",null=True)
     receiver = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,related_name="receivedFeedbacks",null=True)
     content = models.CharField(max_length = 255)
-    order = models.ForeignKey(OrderMembership,related_name="feedback",on_delete=models.SET_NULL,null=True)
+    order = models.ForeignKey(OrderMembership,related_name="feedback",on_delete=models.SET_NULL,null=True) 
+    time = models.DateTimeField(auto_now_add=True)
     #rating 0-good 1-medium 2-bad
     rating = models.IntegerField()
 

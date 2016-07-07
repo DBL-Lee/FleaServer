@@ -1,13 +1,14 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from rest_framework import status,filters, mixins,generics,pagination,permissions
 from rest_framework.permissions import IsAuthenticatedOrReadOnly,IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from product.models import Product,PrimaryCategory,Version,EmailCode,MyUser,OrderMembership
-from product.serializers import ProductSerializer,PriCatSerializer,UserSerializer,OrderPeopleSerializer,OrderSerializer,AwaitingAcceptProductSerializer,FeedbackSerializer
+from product.models import Product,PrimaryCategory,Version,EmailCode,MyUser,OrderMembership,UserFollowMapping,FeedBack
+from product.serializers import ProductSerializer,PriCatSerializer,UserSerializer,OrderPeopleSerializer,OrderSerializer,AwaitingAcceptProductSerializer,FeedbackSerializer,FollowingSerializer,FollowerSerializer,SearchUserSerializer,ListFeedbackSerializer
 from django.http import HttpResponse
 import django_filters
+from django.db.models import F
 from django.contrib.auth import get_user_model
 from rest_framework_jwt import views as jwt_view
 from rest_framework_jwt.authentication import JSONWebTokenAuthentication
@@ -19,6 +20,82 @@ from product.tasks import sendEmail,deleteRow
 from collections import OrderedDict
 from push_notifications.models import APNSDevice
 from chat.tasks import obtainrefreshToken,createEMaccount
+
+class FollowedProducts(generics.ListAPIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    serializer_class = ProductSerializer
+    pagination_class = pagination.PageNumberPagination
+
+    def get_queryset(self):
+        followers = self.request.user.following.all()
+        return Product.objects.filter(user__in=followers)
+
+    
+
+class FollowUser(APIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+
+    def post(self,request,*args,**kwargs):
+        userid = request.data["userid"]
+        try:
+            user = get_user_model().objects.get(pk=userid)
+        except get_user_model().DoesNotExist:
+            data = {"error":"用户不存在"}
+            return Response(data,status=400)
+
+        UserFollowMapping.objects.create(master=user,slave=request.user)
+        return Response({},status=200)
+
+class UnfollowUser(APIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+
+    def delete(self,request,*args,**kwargs):
+        userid = request.data["userid"]
+        try:
+            user = get_user_model().objects.get(pk=userid)
+        except get_user_model().DoesNotExist:
+            data = {"error":"用户不存在"}
+            return Response(data,status=400)
+        try:
+            map = UserFollowMapping.objects.get(master=user,slave=request.user)
+        except:
+            data = {"error":"未关注该用户"}
+            return Response(data,status=400)
+        map.delete()
+        return Response({},status=200)
+
+class FollowerList(generics.ListAPIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    serializer_class = FollowerSerializer
+    pagination_class = pagination.PageNumberPagination
+
+    def get_queryset(self):
+        return self.request.user.follower.all()
+
+class FollowingList(generics.ListAPIView):
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
+    serializer_class = FollowingSerializer
+    pagination_class = pagination.PageNumberPagination
+
+    def get_queryset(self):
+        return self.request.user.following.all()
+
+
+class SearchUser(generics.ListAPIView):
+    serializer_class = SearchUserSerializer
+    pagination_class = pagination.PageNumberPagination
+
+    def get_queryset(self):
+        titleq = self.request.query_params.get('title',None)
+        queryset = get_user_model().objects.all()
+        if titleq is not None:
+            queryset = queryset.filter(nickname__icontains=titleq)
+        return queryset
 
 class SelfOrderedProduct(generics.ListAPIView):
     permission_classes = (IsAuthenticated,)
@@ -46,17 +123,20 @@ class ChangeOrder(APIView):
         try:
             product = Product.objects.get(pk=productid)
         except Product.DoesNotExist:
-            data = {"error":""}
+            data = {"error":"商品不存在"}
             return Response(data,status=400)
         
         if newamount > product.amount-product.soldAmount:
-            data = {"error":""}
+            data = {"error":"请求数量超过库存"}
             return Response(data,status=400)
         
         order = OrderMembership.objects.get(product=product,user=request.user)
         
         if order.accepted is not None:
-            data = {"error":""}
+	    if order.accepted:
+                data = {"error":"卖家已同意请求，无法修改"}
+            else:
+                data = {"error":"卖家已拒绝请求，无法修改"}
             return Response(data,status=400)
         
         order.amount = newamount
@@ -74,7 +154,7 @@ class CancelOrder(APIView):
         try:
             product = Product.objects.get(pk=productid)
         except Product.DoesNotExist:
-            data = {"error":""}
+            data = {"error":"商品不存在"}
             return Response(data,status=400)
         
         if userid is None:
@@ -186,6 +266,14 @@ class SelfBoughtProduct(generics.ListAPIView):
             ongoing = False
         return self.request.user.getBoughtOrder(ongoing=ongoing)
 
+class ListFeedBack(generics.ListAPIView):
+    serializer_class = ListFeedbackSerializer
+    pagination_class = pagination.PageNumberPagination
+
+    def get_queryset(self):
+        id = self.request.query_params.get("userid",None)
+        return FeedBack.objects.filter(receiver=id)
+
 class PostFeedBack(generics.CreateAPIView):
     permission_classes = (IsAuthenticated,)
     authentication_classes = (JSONWebTokenAuthentication,)
@@ -237,6 +325,8 @@ class UserOverview(APIView):
         ret['transaction'] = user.totalTransactionCount()
         ret['goodfeedback'] = user.goodFeedBackCount()
         ret['emusername'] = user.EMUser
+        if request.user.is_authenticated():
+            ret['following'] = request.user.following.filter(id=userid).exists()
         if user.gender is not None:
             ret['gender'] = user.gender
         if user.location is not None:
@@ -268,6 +358,8 @@ class SelfInfo(APIView):
         user = request.user
         ret = OrderedDict()
         ret['id'] = user.pk
+        ret['followercount'] = user.follower.count()
+        ret['followingcount'] = user.following.count()
         ret['nickname'] = user.nickname
         ret['avatar'] = user.avatar
         ret['posted'] = user.postedProductCount()
@@ -340,7 +432,7 @@ class ProductList(generics.ListCreateAPIView):
 
     def get_queryset(self):  
         sortType = self.request.query_params.get('sorttype',None)
-        queryset = Product.objects.all()
+        queryset = Product.objects.filter(soldAmount__lt=F('amount'))
         titleq = self.request.query_params.get('title',None)
         if titleq is not None:
             queryset = queryset.filter(title__icontains=titleq)
@@ -406,13 +498,13 @@ class BuyProduct(APIView):
             return Response(data,status=400)
 
         if product.user != request.user:
-            data = {"error":""}
+            data = {"error":"不是你发布的产品"}
             return Response(data,status=400)
 
         order = OrderMembership.objects.get(product__pk=id,user__pk=userid)
         
         if order.amount > (product.amount-product.soldAmount):
-            data = {"error":""}
+            data = {"error":"请求数量超过库存"}
             return Response(data,status=400)
 
         order.accepted = True
@@ -444,9 +536,11 @@ class FinishTransactionProduct(APIView):
 
         return Response({},status=200)
     
-class ProductDetail(generics.RetrieveUpdateDestroyAPIView):
+class ProductDetail(generics.UpdateAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
+    permission_classes = (IsAuthenticated,)
+    authentication_classes = (JSONWebTokenAuthentication,)
 
 class CategoryList(VersionedListCreateAPIView):
     queryset = PrimaryCategory.objects.all()

@@ -45,7 +45,7 @@ class FollowUser(APIView):
             data = {"error":"用户不存在"}
             return Response(data,status=400)
 
-        UserFollowMapping.objects.create(master=user,slave=request.user)
+        UserFollowMapping.objects.create(main=user,subordinate=request.user)
         return Response({},status=200)
 
 class UnfollowUser(APIView):
@@ -60,7 +60,7 @@ class UnfollowUser(APIView):
             data = {"error":"用户不存在"}
             return Response(data,status=400)
         try:
-            map = UserFollowMapping.objects.get(master=user,slave=request.user)
+            map = UserFollowMapping.objects.get(main=user,subordinate=request.user)
         except:
             data = {"error":"未关注该用户"}
             return Response(data,status=400)

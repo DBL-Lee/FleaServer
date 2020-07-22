@@ -126,8 +126,8 @@ class MyUserManager(BaseUserManager):
         return user
 
 class UserFollowMapping(models.Model): 
-    master = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete = models.CASCADE, related_name = "followermapping")
-    slave = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete = models.CASCADE, related_name = "followingmapping")
+    main = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete = models.CASCADE, related_name = "followermapping")
+    subordinate = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete = models.CASCADE, related_name = "followingmapping")
 
 
 class MyUser(AbstractBaseUser):

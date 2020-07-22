@@ -18,8 +18,8 @@ class Migration(migrations.Migration):
             name='UserFollowMapping',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('master', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='followermapping', to=settings.AUTH_USER_MODEL)),
-                ('slave', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='followingmapping', to=settings.AUTH_USER_MODEL)),
+                ('main', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='followermapping', to=settings.AUTH_USER_MODEL)),
+                ('subordinate', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='followingmapping', to=settings.AUTH_USER_MODEL)),
             ],
         ),
         migrations.AddField(
